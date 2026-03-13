@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Settings, Play, Pause, SkipForward, SkipBack, Monitor, Flame, Trophy, HelpCircle, LayoutList } from 'lucide-react';
+import { Settings, Play, Pause, SkipForward, SkipBack, Monitor, Flame, Trophy, HelpCircle, LayoutList, Cloud } from 'lucide-react';
 import { SlideData, SLIDE_DURATION_MS, STORAGE_KEY, AppMode, RaffleSettings, RAFFLE_KEY } from './types';
 import { INITIAL_SLIDES } from './constants';
 import Slide from './components/Slide';
