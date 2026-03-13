@@ -23,8 +23,35 @@ export interface RaffleSettings {
   winnerExclusions: number[];
   monsterRaffleStartDay: string;
   monsterRaffleStartTime: string;
+  prizePool: number;
+  eposTakings: number;
+  cashTakings: number;
 }
 
-export const SLIDE_DURATION_MS = 8000;
+export interface LoserSettings {
+  drawCount: number;
+  drawnNumbers: number[];
+}
+
+export interface ScheduleItem {
+  id: string;
+  mode: AppMode;
+  days: string[]; // ['Monday', 'Tuesday', ... 'Everyday']
+  startTime: string; // 'HH:MM'
+  endTime: string; // 'HH:MM'
+  isActive: boolean;
+}
+
+export interface GlobalState {
+  mode: AppMode;
+  currentSlideIndex: number;
+  isPlaying: boolean;
+  slides: SlideData[];
+  raffleSettings: RaffleSettings;
+  loserSettings: LoserSettings;
+  schedules: ScheduleItem[];
+}
+
+export const SLIDE_DURATION_MS = 30000; // Increased to 30 seconds
 export const STORAGE_KEY = 'ct_tvhost_slides_v1';
 export const RAFFLE_KEY = 'ct_tvhost_raffle_v1';

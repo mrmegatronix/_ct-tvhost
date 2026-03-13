@@ -1,274 +1,305 @@
-import React, { useState } from 'react';
-import { RaffleSettings } from '../types';
-import { Plus, Trash2, Save, X, LayoutGrid, ArrowLeft, Image as ImageIcon, Eye, EyeOff, GripVertical, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useGlobalState } from '../context/GlobalStateContext';
+import { updateGlobalState } from '../socket';
+import { SlideData, ScheduleItem, AppMode } from '../types';
+import { Plus, Trash2, Save, Home, Image as ImageIcon, Eye, EyeOff, LayoutGrid, Calendar, Trophy, Download } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-interface Props {
-  slides: SlideData[];
-  raffleSettings: RaffleSettings;
-  onSave: (slides: SlideData[]) => void;
-  onRaffleUpdate: (updates: Partial<RaffleSettings>) => void;
-  onClose: () => void;
-}
+export default function AdminPanel() {
+  const context = useGlobalState();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'slides' | 'raffle' | 'schedule' | 'settings'>('slides');
+  
+  // Local state for modifications before saving
+  const [localSlides, setLocalSlides] = useState<SlideData[]>([]);
+  const [localSchedules, setLocalSchedules] = useState<ScheduleItem[]>([]);
+  
+  const [availableImages, setAvailableImages] = useState<{slides: string[], dropoff: string[]}>({ slides: [], dropoff: [] });
+  const [hasChanges, setHasChanges] = useState({ slides: false, schedules: false });
 
-const AdminPanel: React.FC<Props> = ({ slides, raffleSettings, onRaffleUpdate, onClose, onSave }) => {
-  const [localSlides, setLocalSlides] = useState<SlideData[]>(localSlides || slides);
-  const [activeTab, setActiveTab] = useState<'slides' | 'raffle' | 'settings'>('slides');
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useEffect(() => {
+    if (context?.state) {
+      if (!hasChanges.slides) setLocalSlides(context.state.slides);
+      if (!hasChanges.schedules) setLocalSchedules(context.state.schedules || []);
+    }
+  }, [context?.state]);
 
+  useEffect(() => {
+    // Fetch available images from server API
+    fetch('/api/images')
+      .then(res => res.json())
+      .then(data => setAvailableImages(data))
+      .catch(err => console.error("Failed to load images", err));
+  }, []);
+
+  if (!context?.state) return <div className="p-8 text-white">Connecting to server...</div>;
+  
+  const { raffleSettings, loserSettings } = context.state;
+
+  // --- Slides Logic ---
   const handleUpdateSlide = (id: string, updates: Partial<SlideData>) => {
     setLocalSlides(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-    setHasUnsavedChanges(true);
+    setHasChanges(prev => ({ ...prev, slides: true }));
+  };
+  const addSlide = () => {
+    setLocalSlides([...localSlides, {
+      id: Date.now().toString(), type: 'promo', day: 'New Day', title: 'New Event', description: '', highlightColor: '#f59e0b', disabled: false, duration: 30000
+    }]);
+    setHasChanges(prev => ({ ...prev, slides: true }));
   };
 
-  const handleCreate = () => {
-    const newSlide: SlideData = {
-      id: Date.now().toString(),
-      type: 'promo',
-      day: 'New Day',
-      title: 'New Special',
-      description: 'Slide description...',
-      price: '$??',
-      highlightColor: '#f59e0b',
-      disabled: false
-    };
-    setLocalSlides(prev => [...prev, newSlide]);
-    setHasUnsavedChanges(true);
+  // --- Schedule Logic ---
+  const handleUpdateSchedule = (id: string, updates: Partial<ScheduleItem>) => {
+    setLocalSchedules(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    setHasChanges(prev => ({ ...prev, schedules: true }));
+  };
+  const addSchedule = () => {
+    setLocalSchedules([...localSchedules, {
+      id: Date.now().toString(), mode: 'raffle', days: ['Thursday'], startTime: '17:30', endTime: '19:00', isActive: true
+    }]);
+    setHasChanges(prev => ({ ...prev, schedules: true }));
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this slide?')) {
-      setLocalSlides(prev => prev.filter(s => s.id !== id));
-      setHasUnsavedChanges(true);
+  const saveChanges = () => {
+    updateGlobalState({ slides: localSlides, schedules: localSchedules });
+    setHasChanges({ slides: false, schedules: false });
+  };
+
+  const handleSyncToGitHub = async () => {
+    if (confirm("Are you sure you want to push all current logic and settings to GitHub?")) {
+      try {
+        const response = await fetch('/api/sync', { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+          alert('Successfully synced to GitHub!');
+        } else {
+          alert('Failed to sync. Check server logs.');
+        }
+      } catch (err) {
+        alert('Error connecting to sync endpoint.');
+      }
     }
   };
 
-  const handleBulkSave = () => {
-    onSave(localSlides);
-    setHasUnsavedChanges(false);
+  const handlePrintout = () => {
+    // Generates a printable format
+    const newWindow = window.open('', '_blank');
+    if (!newWindow) return;
+    
+    // Formatting HTML string
+    const html = `
+      <html><head><title>Raffle Report</title>
+      <style>body { font-family: sans-serif; padding: 2rem; }</style></head>
+      <body>
+        <h1>Draw Results & Financials</h1>
+        <p>Date: ${new Date().toLocaleDateString()}</p>
+        <hr/>
+        <h3>Financial Summary</h3>
+        <p><strong>Total Prize Pool:</strong> $${raffleSettings.prizePool}</p>
+        <p><strong>EPOS Takings:</strong> $${raffleSettings.eposTakings}</p>
+        <p><strong>Cash Takings:</strong> $${raffleSettings.cashTakings}</p>
+        <hr/>
+        <h3>Monster Raffle Winners</h3>
+        <p>${raffleSettings.drawnNumbers.join(', ') || 'None drawn'}</p>
+        <h3>Second Chance Winners</h3>
+        <p>${loserSettings.drawnNumbers.join(', ') || 'None drawn'}</p>
+        <hr/>
+        <button onclick="window.print()" style="padding:10px 20px; font-size:16px;">Print Document</button>
+      </body></html>
+    `;
+    newWindow.document.write(html);
+    newWindow.document.close();
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950 text-white overflow-hidden flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col">
       {/* Header */}
-      <header className="shrink-0 p-4 md:p-6 bg-slate-900/80 backdrop-blur-xl border-b border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-            <ArrowLeft className="w-6 h-6" />
+      <header className="p-4 bg-slate-900 border-b border-white/10 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/')} className="p-2 hover:bg-white/10 rounded-xl" title="Back to TV">
+            <Home className="w-6 h-6" />
           </button>
-          <div>
-            <h1 className="text-2xl font-serif font-bold text-amber-500 flex items-center gap-2">
-              <LayoutGrid className="w-6 h-6" />
-              TV Host Admin
-            </h1>
-            <div className="flex gap-4 mt-1">
-              {(['slides', 'raffle', 'settings'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`text-[10px] font-black uppercase tracking-widest pb-1 border-b-2 transition-all ${activeTab === tab ? 'text-amber-500 border-amber-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+          <div className="flex gap-2">
+            {[ {id:'slides', i:LayoutGrid}, {id:'raffle', i:Trophy}, {id:'schedule', i:Calendar} ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-xs flex items-center gap-2 ${activeTab === tab.id ? 'bg-amber-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}
+              >
+                <tab.i className="w-4 h-4" /> {tab.id}
+              </button>
+            ))}
           </div>
         </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto">
+        <div className="flex items-center gap-3">
           <button 
-            onClick={handleCreate}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2.5 rounded-xl font-bold transition-all border border-white/5"
+            onClick={handleSyncToGitHub}
+            className="px-4 py-2 rounded-xl font-bold flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 uppercase text-xs tracking-widest"
           >
-            <Plus className="w-5 h-5" /> <span className="whitespace-nowrap">Add Slide</span>
+            GitHub Sync
           </button>
-          
           <button 
-            onClick={handleBulkSave}
-            disabled={!hasUnsavedChanges}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${
-              hasUnsavedChanges 
-              ? 'bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-600/20' 
-              : 'bg-slate-800 text-slate-500 grayscale'
-            }`}
+            onClick={saveChanges}
+            disabled={!hasChanges.slides && !hasChanges.schedules}
+            className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 ${hasChanges.slides || hasChanges.schedules ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20' : 'bg-slate-800 text-slate-500'}`}
           >
-            <Save className="w-5 h-5" /> <span>{hasUnsavedChanges ? 'Save Changes' : 'Saved'}</span>
-          </button>
-
-          <button onClick={onClose} className="p-2 hover:bg-red-500/10 text-slate-400 hover:text-red-500 rounded-full transition-colors">
-            <X className="w-6 h-6" />
+            <Save className="w-5 h-5" /> Save Changes
           </button>
         </div>
       </header>
 
-      {/* Editor Body */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 max-w-6xl mx-auto w-full">
-        {activeTab === 'slides' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {localSlides.map((slide, index) => (
-            <div 
-              key={slide.id} 
-              className={`glass-card p-6 rounded-2xl space-y-4 relative group ${slide.disabled ? 'opacity-50 grayscale' : ''}`}
-            >
-              {/* Card Controls */}
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">#{index + 1}</span>
-                <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => handleUpdateSlide(slide.id, { disabled: !slide.disabled })}
-                    className={`p-2 rounded-lg transition-colors ${slide.disabled ? 'text-amber-500 bg-amber-500/10' : 'text-slate-500 hover:bg-white/5'}`}
-                  >
-                    {slide.disabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(slide.id)}
-                    className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <div className="p-2 text-slate-700 cursor-grab active:cursor-grabbing">
-                    <GripVertical className="w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Form Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Label</label>
-                  <input 
-                    type="text" 
-                    value={slide.day} 
-                    onChange={e => handleUpdateSlide(slide.id, { day: e.target.value })}
-                    className="w-full bg-slate-900/50 border border-white/10 rounded-lg p-2 text-sm focus:border-amber-500 outline-none"
-                    placeholder="Monday"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Price / Info</label>
-                  <input 
-                    type="text" 
-                    value={slide.price} 
-                    onChange={e => handleUpdateSlide(slide.id, { price: e.target.value })}
-                    className="w-full bg-slate-900/50 border border-white/10 rounded-lg p-2 text-sm focus:border-amber-500 outline-none font-bold text-amber-500"
-                    placeholder="$20"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Main Title</label>
-                <input 
-                  type="text" 
-                  value={slide.title} 
-                  onChange={e => handleUpdateSlide(slide.id, { title: e.target.value })}
-                  className="w-full bg-slate-900/50 border border-white/10 rounded-lg p-2 text-base font-bold focus:border-amber-500 outline-none"
-                  placeholder="Steak Night"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Description</label>
-                <textarea 
-                  value={slide.description} 
-                  onChange={e => handleUpdateSlide(slide.id, { description: e.target.value })}
-                  rows={3}
-                  className="w-full bg-slate-900/50 border border-white/10 rounded-lg p-2 text-sm focus:border-amber-500 outline-none resize-none leading-relaxed"
-                  placeholder="Details..."
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase text-glow">Background URL</label>
-                <div className="flex items-center gap-2 bg-slate-900/50 border border-white/10 rounded-lg p-1 px-3">
-                  <ImageIcon className="w-3 h-3 text-slate-500 shrink-0" />
-                  <input 
-                    type="text" 
-                    value={slide.imageUrl || ''} 
-                    onChange={e => handleUpdateSlide(slide.id, { imageUrl: e.target.value })}
-                    className="w-full bg-transparent p-1 text-[10px] font-mono outline-none truncate"
-                    placeholder="images/bg1.jpg"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Theme</label>
-                  <input 
-                    type="color" 
-                    value={slide.highlightColor} 
-                    onChange={e => handleUpdateSlide(slide.id, { highlightColor: e.target.value })}
-                    className="h-6 w-10 bg-transparent cursor-pointer rounded overflow-hidden p-0 border-0"
-                  />
-                </div>
-                <div className="text-[10px] font-mono text-slate-600">{slide.id.slice(-6)}</div>
-              </div>
+      {/* Main Context */}
+      <main className="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full">
+        {activeTab === 'slides' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black uppercase text-amber-500">Slide Manager</h2>
+              <button onClick={addSlide} className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg hover:bg-slate-700">
+                <Plus className="w-4 h-4" /> Add Slide
+              </button>
             </div>
-          ))}
-
-          {/* New Slide Button */}
-          <button 
-            onClick={handleCreate}
-            className="border-2 border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center p-8 text-slate-500 hover:text-amber-500 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-full bg-slate-900 border border-white/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Plus className="w-6 h-6" />
-            </div>
-          </button>
-        </div>
-        ) : activeTab === 'raffle' ? (
-          <div className="space-y-8 animate-fade-in">
-             <div className="bg-white/5 backdrop-blur-3xl p-8 rounded-[2.5rem] border border-white/10 space-y-6">
-                <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
-                    <Trophy className="text-amber-500" /> Raffle Configuration
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-xs font-black text-amber-500 uppercase tracking-widest pl-1">Number Range</label>
-                        <div className="flex items-center gap-4">
-                            <input 
-                                type="number" 
-                                value={raffleSettings.rangeStart} 
-                                onChange={e => onRaffleUpdate({ rangeStart: parseInt(e.target.value) })}
-                                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl p-4 font-black text-xl text-center focus:border-amber-500 outline-none"
-                            />
-                            <span className="text-slate-500 font-bold">TO</span>
-                            <input 
-                                type="number" 
-                                value={raffleSettings.rangeEnd} 
-                                onChange={e => onRaffleUpdate({ rangeEnd: parseInt(e.target.value) })}
-                                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl p-4 font-black text-xl text-center focus:border-amber-500 outline-none"
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-3">
-                        <label className="text-xs font-black text-amber-500 uppercase tracking-widest pl-1">Draw Count (Per Session)</label>
-                        <input 
-                            type="number" 
-                            value={raffleSettings.drawCount} 
-                            onChange={e => onRaffleUpdate({ drawCount: parseInt(e.target.value) })}
-                            className="w-full bg-slate-900/50 border border-white/10 rounded-2xl p-4 font-black text-xl focus:border-amber-500 outline-none"
-                        />
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {localSlides.map((slide, i) => (
+                <div key={slide.id} className={`p-5 rounded-2xl border border-white/5 bg-slate-900/50 space-y-4 ${slide.disabled ? 'opacity-50 blur-[1px]' : ''}`}>
+                   <div className="flex justify-between items-center">
+                     <span className="text-xs font-black tracking-widest text-slate-500">#{i + 1}</span>
+                     <div className="flex gap-2">
+                       <button onClick={() => handleUpdateSlide(slide.id, { disabled: !slide.disabled })} className="p-1.5 rounded bg-slate-800">{slide.disabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                       <button onClick={() => setLocalSlides(localSlides.filter(s => s.id !== slide.id))} className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white"><Trash2 className="w-4 h-4" /></button>
+                     </div>
+                   </div>
+                   <input className="w-full bg-slate-950 p-2 rounded text-sm font-bold border border-white/5" value={slide.title} onChange={e => handleUpdateSlide(slide.id, { title: e.target.value })} placeholder="Title" />
+                   <textarea className="w-full bg-slate-950 p-2 rounded text-xs border border-white/5" rows={2} value={slide.description} onChange={e => handleUpdateSlide(slide.id, { description: e.target.value })} placeholder="Description" />
+                   
+                   <div className="space-y-1">
+                     <label className="text-[10px] uppercase text-slate-500 tracking-widest">Background Image</label>
+                     <select 
+                       className="w-full bg-slate-950 p-2 rounded text-xs border border-white/5"
+                       value={slide.imageUrl || ''}
+                       onChange={e => handleUpdateSlide(slide.id, { imageUrl: e.target.value })}
+                     >
+                       <option value="">None / Custom URL</option>
+                       <optgroup label="Slides Folder">
+                         {availableImages.slides.map(img => <option key={img} value={img}>{img}</option>)}
+                       </optgroup>
+                       <optgroup label="Product Dropoff">
+                         {availableImages.dropoff.map(img => <option key={img} value={img}>{img}</option>)}
+                       </optgroup>
+                     </select>
+                   </div>
                 </div>
-             </div>
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4">
-             <Settings className="w-16 h-16 opacity-20" />
-             <p className="font-bold uppercase tracking-widest">General Settings - Coming Soon</p>
+        )}
+
+        {activeTab === 'raffle' && (
+          <div className="space-y-8 max-w-4xl">
+            <h2 className="text-2xl font-black uppercase text-amber-500 flex justify-between items-center">
+               Raffle & Draw Configuration
+               <button onClick={handlePrintout} className="text-sm px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center gap-2">
+                 <Download className="w-4 h-4" /> Print Results
+               </button>
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               {/* Financials block */}
+               <div className="p-6 bg-slate-900 border border-white/10 rounded-3xl space-y-4">
+                  <h3 className="font-bold text-slate-400 uppercase tracking-widest text-sm mb-4">Financial Records</h3>
+                  
+                  <div>
+                    <label className="text-xs text-slate-500 uppercase font-black">Total Prize Pool ($)</label>
+                    <input type="number" className="w-full bg-slate-950 p-3 rounded-xl mt-1 font-bold text-amber-500 outline-none" 
+                           value={raffleSettings.prizePool || 0} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, prizePool: Number(e.target.value) }})} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 uppercase font-black">EPOS Takings ($)</label>
+                    <input type="number" className="w-full bg-slate-950 p-3 rounded-xl mt-1 outline-none" 
+                           value={raffleSettings.eposTakings || 0} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, eposTakings: Number(e.target.value) }})} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 uppercase font-black">Cash Takings ($)</label>
+                    <input type="number" className="w-full bg-slate-950 p-3 rounded-xl mt-1 outline-none" 
+                           value={raffleSettings.cashTakings || 0} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, cashTakings: Number(e.target.value) }})} />
+                  </div>
+               </div>
+
+               {/* Configurations */}
+               <div className="p-6 bg-slate-900 border border-white/10 rounded-3xl space-y-6">
+                  <div className="space-y-2">
+                    <h3 className="font-bold text-amber-500 uppercase tracking-widest text-sm">Monster Raffle Limits</h3>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-slate-500">Range Start</label>
+                        <input type="number" className="w-full bg-slate-950 p-2 rounded border border-white/5 outline-none" value={raffleSettings.rangeStart} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, rangeStart: Number(e.target.value) }})} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[10px] text-slate-500">Range End</label>
+                        <input type="number" className="w-full bg-slate-950 p-2 rounded border border-white/5 outline-none" value={raffleSettings.rangeEnd} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, rangeEnd: Number(e.target.value) }})} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[10px] text-slate-500">Draws Amount</label>
+                        <input type="number" className="w-full bg-slate-950 p-2 rounded border border-white/5 outline-none text-amber-500 font-bold" value={raffleSettings.drawCount} onChange={e => updateGlobalState({ raffleSettings: { ...raffleSettings, drawCount: Number(e.target.value) }})} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-4 border-t border-white/10">
+                    <h3 className="font-bold text-indigo-400 uppercase tracking-widest text-sm">Losers Draw Limits</h3>
+                    <div className="flex-1 w-1/3">
+                        <label className="text-[10px] text-slate-500">Draws Amount</label>
+                        <input type="number" className="w-full bg-slate-950 p-2 rounded border border-white/5 outline-none text-indigo-400 font-bold" value={loserSettings.drawCount} onChange={e => updateGlobalState({ loserSettings: { ...loserSettings, drawCount: Number(e.target.value) }})} />
+                    </div>
+                  </div>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'schedule' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center mb-8">
+               <div>
+                 <h2 className="text-2xl font-black uppercase text-amber-500">Automated Scheduler</h2>
+                 <p className="text-slate-500 text-sm">Configure modes/slides to take over the screen automatically</p>
+               </div>
+               <button onClick={addSchedule} className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg hover:bg-slate-700">
+                 <Plus className="w-4 h-4" /> Add Rule
+               </button>
+            </div>
+
+            <div className="space-y-4">
+              {localSchedules.map((schedule, i) => (
+                <div key={schedule.id} className="p-4 bg-slate-900 border border-white/10 rounded-2xl flex items-center justify-between gap-6">
+                   <div className="flex items-center gap-4">
+                     <select 
+                       className="bg-slate-950 border border-white/10 p-2 rounded-xl text-sm font-bold text-amber-500 outline-none"
+                       value={schedule.mode} onChange={e => handleUpdateSchedule(schedule.id, { mode: e.target.value as AppMode })}
+                     >
+                       <option value="slides">Slides</option>
+                       <option value="raffle">Monster Raffle</option>
+                       <option value="losers">Losers Draw</option>
+                       <option value="quiz">Quiz Buildup</option>
+                     </select>
+
+                     <div className="flex items-center gap-2">
+                       <span className="text-xs text-slate-500">From</span>
+                       <input type="time" className="bg-slate-950 p-2 rounded-lg border border-white/5 text-sm" value={schedule.startTime} onChange={e => handleUpdateSchedule(schedule.id, { startTime: e.target.value })} />
+                       <span className="text-xs text-slate-500">To</span>
+                       <input type="time" className="bg-slate-950 p-2 rounded-lg border border-white/5 text-sm" value={schedule.endTime} onChange={e => handleUpdateSchedule(schedule.id, { endTime: e.target.value })} />
+                     </div>
+                   </div>
+
+                   <button onClick={() => setLocalSchedules(localSchedules.filter(s => s.id !== schedule.id))} className="p-2 text-slate-600 hover:text-red-500">
+                     <Trash2 className="w-5 h-5" />
+                   </button>
+                </div>
+              ))}
+              {localSchedules.length === 0 && <p className="text-slate-600 italic">No scheduled events active.</p>}
+            </div>
           </div>
         )}
       </main>
-
-      {/* Footer Alert */}
-      {hasUnsavedChanges && (
-        <div className="bg-amber-600 px-4 py-2 text-center text-[10px] md:text-sm font-black uppercase tracking-[0.2em] shadow-2xl">
-          Unsaved changes detected - Save before closing
-        </div>
-      )}
     </div>
   );
-};
-
-export default AdminPanel;
+}
