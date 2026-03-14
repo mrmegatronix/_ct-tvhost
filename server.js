@@ -93,9 +93,11 @@ app.post('/api/sync', (req, res) => {
 
 
 app.use(express.static(path.join(__dirname, 'dist')));
+app.use('/_ct-tvhost', express.static(path.join(__dirname, 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/_ct-tvhost', express.static(path.join(__dirname, 'public')));
 
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
