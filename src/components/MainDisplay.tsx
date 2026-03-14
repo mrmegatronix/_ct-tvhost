@@ -36,9 +36,9 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // No longer blocking on !context.state since we have a DEFAULT_STATE
-  const state = context.state;
-  const isConnected = context.isConnected;
+  // Defensive check for context and state
+  const state = context?.state || null;
+  const isConnected = context?.isConnected || false;
 
   const { mode, slides, currentSlideIndex, isPlaying, raffleSettings, loserSettings } = state || DEFAULT_STATE;
 
