@@ -8,14 +8,17 @@ import { useNavigate } from 'react-router-dom';
 export default function AdminPanel() {
   const context = useGlobalState();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'slides' | 'raffle' | 'schedule' | 'settings'>('slides');
+  const [activeTab, setActiveTab] = useState<'slides' | 'raffle' | 'schedule' | 'documents' | 'settings'>('slides');
   
   // Local state for modifications before saving
   const [localSlides, setLocalSlides] = useState<SlideData[]>([]);
   const [localSchedules, setLocalSchedules] = useState<ScheduleItem[]>([]);
   
   const [availableImages, setAvailableImages] = useState<{slides: string[], dropoff: string[]}>({ slides: [], dropoff: [] });
-  const [hasChanges, setHasChanges] = useState({ slides: false, schedules: false });
+  const [availableDocs, setAvailableDocs] = useState<string[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<string>('');
+  const [docContent, setDocContent] = useState<string>('');
+  const [hasChanges, setHasChanges] = useState({ slides: false, schedules: false, documents: false });
 
   useEffect(() => {
     if (context?.state) {
@@ -30,7 +33,24 @@ export default function AdminPanel() {
       .then(res => res.json())
       .then(data => setAvailableImages(data))
       .catch(err => console.error("Failed to load images", err));
+
+    // Fetch available documents
+    fetch('/api/documents')
+      .then(res => res.json())
+      .then(data => {
+        setAvailableDocs(data);
+        if (data.length > 0) setSelectedDoc(data[0]);
+      })
+      .catch(err => console.error("Failed to load docs", err));
   }, []);
+
+  useEffect(() => {
+    if (selectedDoc) {
+      fetch(`/api/documents/${selectedDoc}`)
+        .then(res => res.text())
+        .then(text => setDocContent(text));
+    }
+  }, [selectedDoc]);
 
   if (!context?.state) return <div className="p-8 text-white">Connecting to server...</div>;
   
@@ -120,7 +140,7 @@ export default function AdminPanel() {
             <Home className="w-6 h-6" />
           </button>
           <div className="flex gap-2">
-            {[ {id:'slides', i:LayoutGrid}, {id:'raffle', i:Trophy}, {id:'schedule', i:Calendar} ].map(tab => (
+            {[ {id:'slides', i:LayoutGrid}, {id:'raffle', i:Trophy}, {id:'schedule', i:Calendar}, {id:'documents', i:ImageIcon} ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
@@ -140,8 +160,8 @@ export default function AdminPanel() {
           </button>
           <button 
             onClick={saveChanges}
-            disabled={!hasChanges.slides && !hasChanges.schedules}
-            className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 ${hasChanges.slides || hasChanges.schedules ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20' : 'bg-slate-800 text-slate-500'}`}
+            disabled={!hasChanges.slides && !hasChanges.schedules && !hasChanges.documents}
+            className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 ${hasChanges.slides || hasChanges.schedules || hasChanges.documents ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20' : 'bg-slate-800 text-slate-500'}`}
           >
             <Save className="w-5 h-5" /> Save Changes
           </button>
@@ -296,6 +316,73 @@ export default function AdminPanel() {
                 </div>
               ))}
               {localSchedules.length === 0 && <p className="text-slate-600 italic">No scheduled events active.</p>}
+            </div>
+          </div>
+        )}
+        {activeTab === 'documents' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black uppercase text-amber-500">Document Manager</h2>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => {
+                    if (confirm("This will replace all current slides with ones generated from this document. Proceed?")) {
+                      fetch('/api/generate-slides', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: selectedDoc })
+                      })
+                      .then(res => res.json())
+                      .then(res => alert(`Successfully generated ${res.count} slides!`));
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 text-white"
+                >
+                  <Save className="w-4 h-4" /> Generate Slides from CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <label className="text-xs text-slate-500 uppercase font-black">Select File</label>
+                <select 
+                  className="bg-slate-950 border border-white/10 p-2 rounded-xl text-sm font-bold text-amber-500 outline-none"
+                  value={selectedDoc} onChange={e => setSelectedDoc(e.target.value)}
+                >
+                  {availableDocs.map(doc => <option key={doc} value={doc}>{doc}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-slate-500 uppercase font-black">Content Editor (CSV/JSON)</label>
+                <textarea 
+                  className="w-full h-[400px] bg-slate-950 p-4 rounded-xl border border-white/10 text-sm font-mono text-slate-300 focus:border-amber-500 outline-none"
+                  value={docContent}
+                  onChange={e => {
+                    setDocContent(e.target.value);
+                    setHasChanges(prev => ({ ...prev, documents: true }));
+                  }}
+                />
+              </div>
+
+              <button 
+                onClick={() => {
+                  fetch(`/api/documents/${selectedDoc}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: docContent })
+                  })
+                  .then(() => {
+                    alert("Document saved!");
+                    setHasChanges(prev => ({ ...prev, documents: false }));
+                  });
+                }}
+                disabled={!hasChanges.documents}
+                className={`px-6 py-2 rounded-xl font-bold ${hasChanges.documents ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-500'}`}
+              >
+                Save Document
+              </button>
             </div>
           </div>
         )}

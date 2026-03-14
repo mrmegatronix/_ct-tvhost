@@ -1,0 +1,4 @@
+day,title,description,price,imageUrl,backgroundImageUrl,highlightColor,duration
+Monday,Steak Day,Succulent Rump Steak with Fries,$20,images/steak.jpg,back-images/bg1.jpg,#f59e0b,30000
+Thursday,Burger Night,Choice of Burger with Fries,$19,images/burger.jpg,,#f97316,30000
+Sunday,Sunday Roast,Traditional roast with all the trimmings,$28,images/roast.jpg,,#84cc16,30000

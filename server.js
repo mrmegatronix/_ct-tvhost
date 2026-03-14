@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.use(express.json());
 const server = http.createServer(app);
 
 // In dev mode we need CORS, in prod it serves from the same port.
@@ -77,6 +78,75 @@ app.get('/api/images', (req, res) => {
   const dropoff = readDirSafe('dropoff');
   
   res.json({ slides, dropoff });
+});
+
+// Document/Template management
+app.get('/api/documents', (req, res) => {
+  try {
+    const fullPath = path.join(__dirname, 'public', 'documents');
+    if (!fs.existsSync(fullPath)) return res.json([]);
+    const files = fs.readdirSync(fullPath)
+      .filter(file => /\.(csv|json|txt)$/i.test(file));
+    res.json(files);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/documents/:filename', (req, res) => {
+  try {
+    const fullPath = path.join(__dirname, 'public', 'documents', req.params.filename);
+    if (!fs.existsSync(fullPath)) return res.status(404).send('File not found');
+    const content = fs.readFileSync(fullPath, 'utf8');
+    res.send(content);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/documents/:filename', (req, res) => {
+  try {
+    const fullPath = path.join(__dirname, 'public', 'documents', req.params.filename);
+    fs.writeFileSync(fullPath, req.body.content, 'utf8');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/generate-slides', (req, res) => {
+  try {
+    const { filename } = req.body;
+    const fullPath = path.join(__dirname, 'public', 'documents', filename);
+    if (!fs.existsSync(fullPath)) return res.status(404).send('File not found');
+    
+    const content = fs.readFileSync(fullPath, 'utf8');
+    let newSlides = [];
+
+    if (filename.endsWith('.csv')) {
+      const lines = content.split('\n').filter(l => l.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+      newSlides = lines.slice(1).map((line, idx) => {
+        const values = line.split(',').map(v => v.trim());
+        const slide = { id: `gen-${Date.now()}-${idx}`, type: 'promo', disabled: false };
+        headers.forEach((h, i) => {
+          if (h === 'duration') slide[h] = Number(values[i]) || 30000;
+          else slide[h] = values[i] || '';
+        });
+        return slide;
+      });
+    } else if (filename.endsWith('.json')) {
+      newSlides = JSON.parse(content);
+    }
+
+    // Update global state with newly generated slides
+    globalState.slides = newSlides;
+    io.emit('state:sync', globalState);
+    
+    res.json({ success: true, count: newSlides.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/sync', (req, res) => {
