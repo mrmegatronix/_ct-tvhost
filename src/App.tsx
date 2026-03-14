@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { GlobalStateProvider } from './context/GlobalStateContext';
 
 import MainDisplay from './components/MainDisplay';
@@ -9,8 +9,8 @@ import RemoteControl from './components/RemoteControl';
 const App: React.FC = () => {
   return (
     <GlobalStateProvider>
-      {/* Use generic hash router or browser router for standard routing */}
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {/* Use HashRouter for GitHub Pages to support routing without extra configuration */}
+      <HashRouter>
         <Routes>
           {/* Main TV Screen (Is Master, handles auto-advancing slides) */}
           <Route path="/" element={<MainDisplay isMaster={true} />} />
@@ -24,7 +24,7 @@ const App: React.FC = () => {
           {/* Mobile Phone Remote */}
           <Route path="/remote" element={<RemoteControl />} />
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </GlobalStateProvider>
   );
 };

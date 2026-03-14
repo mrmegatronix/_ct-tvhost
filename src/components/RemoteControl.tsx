@@ -1,5 +1,5 @@
 import React from 'react';
-import { useGlobalState } from '../context/GlobalStateContext';
+import { useGlobalState, DEFAULT_STATE } from '../context/GlobalStateContext';
 import { updateGlobalState } from '../socket';
 import { Play, Pause, SkipForward, SkipBack, Monitor, Flame, Trophy, HelpCircle, LayoutList, Cloud, ShieldAlert } from 'lucide-react';
 import { AppMode } from '../types';
@@ -7,17 +7,11 @@ import { AppMode } from '../types';
 const RemoteControl: React.FC = () => {
   const context = useGlobalState();
 
-  if (!context?.state) {
-    return (
-      <div className="flex w-screen h-screen flex-col items-center justify-center bg-slate-950 text-amber-500 font-sans p-6 text-center">
-        <ShieldAlert className="w-16 h-16 mb-4 animate-pulse text-red-500" />
-        <h1 className="text-2xl font-black uppercase tracking-widest mb-2">Connecting to Server</h1>
-        <p className="text-slate-400 text-sm">Ensure your phone is on the same WiFi network as the Host PC.</p>
-      </div>
-    );
-  }
+  // Fallback to DEFAULT_STATE if context is not yet ready
+  const state = context?.state || DEFAULT_STATE;
+  const isConnected = context?.isConnected || false;
 
-  const { mode, isPlaying, currentSlideIndex, slides, raffleSettings, loserSettings } = context.state;
+  const { mode, isPlaying, currentSlideIndex, slides, raffleSettings, loserSettings } = state;
   const activeSlides = slides.filter(s => !s.disabled);
 
   const setMode = (newMode: AppMode) => updateGlobalState({ mode: newMode });
@@ -85,11 +79,18 @@ const RemoteControl: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans p-4 pb-20 select-none">
-      <header className="mb-6 border-b border-white/10 pb-4">
-        <h1 className="text-2xl font-black text-amber-500 tracking-tighter uppercase flex items-center gap-2">
-          <Monitor className="w-6 h-6" /> TV Remote
-        </h1>
-        <p className="text-xs text-slate-500 font-bold tracking-widest uppercase mt-1">Live Sync Active</p>
+      <header className="mb-6 border-b border-white/10 pb-4 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-black text-amber-500 tracking-tighter uppercase flex items-center gap-2">
+            <Monitor className="w-6 h-6" /> TV Remote
+          </h1>
+          <p className="text-xs text-slate-500 font-bold tracking-widest uppercase mt-1">
+            {isConnected ? 'Live Sync Active' : 'Disconnected / Local Mode'}
+          </p>
+        </div>
+        {!isConnected && (
+          <ShieldAlert className="w-6 h-6 text-red-500 animate-pulse" />
+        )}
       </header>
 
       {/* Mode Switches */}

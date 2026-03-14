@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../context/GlobalStateContext';
+import { useGlobalState, DEFAULT_STATE } from '../context/GlobalStateContext';
 import { updateGlobalState } from '../socket';
 import { SlideData, ScheduleItem, AppMode } from '../types';
 import { Plus, Trash2, Save, Home, Image as ImageIcon, Eye, EyeOff, LayoutGrid, Calendar, Trophy, Download } from 'lucide-react';
@@ -52,9 +52,11 @@ export default function AdminPanel() {
     }
   }, [selectedDoc]);
 
-  if (!context?.state) return <div className="p-8 text-white">Connecting to server...</div>;
+  // Fallback to DEFAULT_STATE if context is not yet ready
+  const state = context?.state || DEFAULT_STATE;
+  const isConnected = context?.isConnected || false;
   
-  const { raffleSettings, loserSettings } = context.state;
+  const { raffleSettings, loserSettings } = state;
 
   // --- Slides Logic ---
   const handleUpdateSlide = (id: string, updates: Partial<SlideData>) => {
@@ -152,6 +154,11 @@ export default function AdminPanel() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {!isConnected && (
+            <span className="px-3 py-1 bg-red-900/50 text-red-200 text-[10px] font-bold rounded-full border border-red-500/30 animate-pulse">
+              OFFLINE
+            </span>
+          )}
           <button 
             onClick={handleSyncToGitHub}
             className="px-4 py-2 rounded-xl font-bold flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 uppercase text-xs tracking-widest"
