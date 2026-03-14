@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { updateGlobalState } from '../socket';
-import { SLIDE_DURATION_MS } from '../types';
+import { SLIDE_DURATION_MS, SlideData } from '../types';
+import { DEFAULT_STATE } from '../context/GlobalStateContext';
 
 import Slide from './Slide';
 import MonsterRaffle from './MonsterRaffle';
@@ -35,17 +36,13 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  if (!context?.state) {
-    return (
-      <div className="flex w-screen h-screen items-center justify-center bg-black text-amber-500 font-serif text-2xl animate-pulse">
-        Connecting to Server...
-      </div>
-    );
-  }
+  // No longer blocking on !context.state since we have a DEFAULT_STATE
+  const state = context.state;
+  const isConnected = context.isConnected;
 
-  const { mode, slides, currentSlideIndex, isPlaying, raffleSettings, loserSettings } = context.state;
+  const { mode, slides, currentSlideIndex, isPlaying, raffleSettings, loserSettings } = state || DEFAULT_STATE;
 
-  const playlist = useMemo(() => slides.filter(s => !s.disabled), [slides]);
+  const playlist = useMemo(() => slides.filter((s: SlideData) => !s.disabled), [slides]);
   const currentSlide = playlist[currentSlideIndex] || playlist[0];
 
   // Auto-advance logic ONLY for the master display
@@ -118,6 +115,13 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
           {renderMode()}
         </motion.div>
       </AnimatePresence>
+
+      {/* Connection Status Indicator */}
+      {!isConnected && (
+        <div className="absolute top-4 right-4 z-50 px-3 py-1 bg-red-900/80 text-red-100 text-xs font-bold rounded-full border border-red-500/50 animate-pulse backdrop-blur-sm">
+          LOCAL MODE
+        </div>
+      )}
 
       {/* Progress Bar (Only for Slides) */}
       {mode === 'slides' && (
