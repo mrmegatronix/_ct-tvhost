@@ -2,6 +2,18 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../_ace-chase"
+		},
+		{
+			"path": "../_ct-slides-logo"
+		},
+		{
+			"path": "../_ct-tv-slides"
+		},
+		{
+			"path": "../_ct-weather-final"
 		}
 	]
 }
