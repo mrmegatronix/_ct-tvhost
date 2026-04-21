@@ -95,10 +95,10 @@ export default function AdminPanel() {
         if (result.success) {
           alert('Successfully synced to GitHub!');
         } else {
-          alert('Failed to sync. Check server logs.');
+          alert(`Sync Failed: ${result.error || 'Unknown Error'}\n\n${result.message || 'Check server logs for details.'}`);
         }
       } catch (err) {
-        alert('Error connecting to sync endpoint.');
+        alert('Error connecting to sync endpoint. Ensure the server is running.');
       }
     }
   };

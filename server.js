@@ -151,13 +151,37 @@ app.post('/api/generate-slides', (req, res) => {
 
 app.post('/api/sync', (req, res) => {
   console.log('Initiating GitHub Auto-Sync...');
-  exec('git add . && git commit -m "Auto-sync from TV Host Admin Panel" && git push', { cwd: __dirname }, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Sync error: ${error.message}`);
-      return res.status(500).json({ success: false, error: error.message, stderr });
+  
+  // First, check if we can even run git
+  exec('git --version', (versionError) => {
+    if (versionError) {
+      return res.status(500).json({ 
+        success: false, 
+        error: "Git is not installed or not in PATH.",
+        details: versionError.message 
+      });
     }
-    console.log(`Sync stdout: ${stdout}`);
-    res.json({ success: true, message: "Successfully synced to GitHub", stdout });
+
+    const syncCommand = 'git add . && git commit -m "Auto-sync from TV Host Admin Panel" && git push';
+    
+    exec(syncCommand, { cwd: __dirname }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Sync error: ${error.message}`);
+        // Check for common credential errors
+        const isCredentialError = stderr.includes('credential') || stderr.includes('Authentication') || error.message.includes('128');
+        
+        return res.status(500).json({ 
+          success: false, 
+          error: isCredentialError ? "Git Authentication Required" : "Git Sync Failed",
+          message: isCredentialError 
+            ? "A credential prompt may have appeared. Please ensure you are authenticated in your terminal (run 'git push' manually once)."
+            : error.message,
+          stderr 
+        });
+      }
+      console.log(`Sync stdout: ${stdout}`);
+      res.json({ success: true, message: "Successfully synced to GitHub", stdout });
+    });
   });
 });
 
