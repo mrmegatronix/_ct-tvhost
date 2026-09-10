@@ -45,12 +45,23 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
   const playlist = useMemo(() => slides.filter((s: SlideData) => !s.disabled), [slides]);
   const currentSlide = playlist[currentSlideIndex] || playlist[0];
 
+  const [isLocked, setIsLocked] = useState(false);
+  const [customDuration, setCustomDuration] = useState<number | null>(null);
+  const [hudMessage, setHudMessage] = useState<string | null>(null);
+  const hudTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showHud = (text: string) => {
+    setHudMessage(text);
+    if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+    hudTimeoutRef.current = setTimeout(() => setHudMessage(null), 1600);
+  };
+
   // Auto-advance logic ONLY for the master display
   useEffect(() => {
-    if (!isMaster || !isPlaying || mode !== 'slides' || playlist.length === 0) return;
+    if (!isMaster || !isPlaying || mode !== 'slides' || playlist.length === 0 || isLocked) return;
 
     const interval = setInterval(() => {
-      const duration = currentSlide?.duration || SLIDE_DURATION_MS;
+      const duration = customDuration || currentSlide?.duration || SLIDE_DURATION_MS;
       const elapsed = Date.now() - startTimeRef.current;
       const newProgress = (elapsed / duration) * 100;
 
@@ -66,7 +77,80 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isMaster, isPlaying, mode, currentSlideIndex, playlist, currentSlide]);
+  }, [isMaster, isPlaying, mode, currentSlideIndex, playlist, currentSlide, isLocked, customDuration]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || (document.activeElement as HTMLElement)?.isContentEditable) return;
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (playlist.length > 0) {
+          updateGlobalState({ currentSlideIndex: (currentSlideIndex - 1 + playlist.length) % playlist.length });
+          showHud('Prev Slide');
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (playlist.length > 0) {
+          updateGlobalState({ currentSlideIndex: (currentSlideIndex + 1) % playlist.length });
+          showHud('Next Slide');
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        updateGlobalState({ currentSlideIndex: 0 });
+        showHud('Restart Module');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'SKIP_MODULE' }, '*');
+        }
+        showHud('Next Module');
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        updateGlobalState({ isPlaying: !isPlaying });
+        showHud(!isPlaying ? 'Playing' : 'Paused');
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        window.open('/#/admin', '_blank');
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        window.open('/#/remote', '_blank');
+      } else if (e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const secs = parseInt(e.key, 10) * 10;
+        setCustomDuration(secs * 1000);
+        setProgress(0);
+        startTimeRef.current = Date.now();
+        showHud(`Speed: ${secs}s`);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        setIsLocked(prev => {
+          const next = !prev;
+          showHud(next ? 'Slide Locked' : 'Slide Unlocked');
+          return next;
+        });
+      }
+    };
+
+    const handleMessage = (e: MessageEvent) => {
+      if (!e.data) return;
+      if (e.data.type === 'SKIP_MODULE') {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'SKIP_MODULE' }, '*');
+        }
+      } else if (e.data.type === 'GOTO_FIRST') {
+        updateGlobalState({ currentSlideIndex: 0 });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [playlist.length, currentSlideIndex, isPlaying]);
 
   // Reset timer on slide change
   useEffect(() => {
@@ -130,6 +214,12 @@ const MainDisplay: React.FC<Props> = ({ isMaster = false }) => {
             className="h-full bg-gradient-to-r from-amber-600 to-yellow-400 transition-all duration-100 ease-linear shadow-[0_0_10px_rgba(217,119,6,0.5)]"
             style={{ width: `${progress}%` }}
           />
+        </div>
+      )}
+
+      {hudMessage && (
+        <div className="fixed bottom-6 right-6 z-[99999] bg-black/85 text-white border border-white/25 px-4 py-2 rounded-xl text-sm font-semibold shadow-2xl tracking-wide pointer-events-none transition-opacity duration-200">
+          {hudMessage}
         </div>
       )}
     </div>
